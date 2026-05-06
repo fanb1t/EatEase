@@ -27,6 +27,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database['public']['Tables']['tables']['Insert']>;
+        Relationships: [];
       };
       menu_categories: {
         Row: {
@@ -50,6 +51,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database['public']['Tables']['menu_categories']['Insert']>;
+        Relationships: [];
       };
       menu_items: {
         Row: {
@@ -85,6 +87,15 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database['public']['Tables']['menu_items']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'menu_items_category_id_fkey';
+            columns: ['category_id'];
+            isOneToOne: false;
+            referencedRelation: 'menu_categories';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       orders: {
         Row: {
@@ -112,6 +123,15 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database['public']['Tables']['orders']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'orders_table_id_fkey';
+            columns: ['table_id'];
+            isOneToOne: false;
+            referencedRelation: 'tables';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       order_items: {
         Row: {
@@ -139,6 +159,22 @@ export type Database = {
           created_at?: string;
         };
         Update: Partial<Database['public']['Tables']['order_items']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'order_items_menu_item_id_fkey';
+            columns: ['menu_item_id'];
+            isOneToOne: false;
+            referencedRelation: 'menu_items';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'order_items_order_id_fkey';
+            columns: ['order_id'];
+            isOneToOne: false;
+            referencedRelation: 'orders';
+            referencedColumns: ['id'];
+          },
+        ];
       };
     };
     Views: Record<string, never>;

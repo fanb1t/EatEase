@@ -5,6 +5,8 @@ type CategoryInsert = Database['public']['Tables']['menu_categories']['Insert'];
 type CategoryUpdate = Database['public']['Tables']['menu_categories']['Update'];
 type ItemInsert = Database['public']['Tables']['menu_items']['Insert'];
 type ItemUpdate = Database['public']['Tables']['menu_items']['Update'];
+type TableInsert = Database['public']['Tables']['tables']['Insert'];
+type TableUpdate = Database['public']['Tables']['tables']['Update'];
 
 export async function upsertMenuCategory(category: CategoryInsert) {
   const { data, error } = await requireSupabase()
@@ -43,6 +45,29 @@ export async function upsertMenuItem(item: ItemInsert) {
 export async function updateMenuItem(id: string, patch: ItemUpdate) {
   const { data, error } = await requireSupabase()
     .from('menu_items')
+    .update(patch)
+    .eq('id', id)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function upsertDiningTable(table: TableInsert) {
+  const { data, error } = await requireSupabase()
+    .from('tables')
+    .upsert(table, { onConflict: 'slug' })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateDiningTable(id: string, patch: TableUpdate) {
+  const { data, error } = await requireSupabase()
+    .from('tables')
     .update(patch)
     .eq('id', id)
     .select('*')

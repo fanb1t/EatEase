@@ -1,4 +1,6 @@
-import type { Database, OrderStatus } from './database';
+import type { Database, OrderStatus as DatabaseOrderStatus } from './database';
+
+export type OrderStatus = DatabaseOrderStatus;
 
 export type DiningTable = Database['public']['Tables']['tables']['Row'];
 export type MenuCategory = Database['public']['Tables']['menu_categories']['Row'];

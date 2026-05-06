@@ -1,3 +1,5 @@
+import { mockCategories, mockMenuItems, mockTables } from "../lib/mockData";
+import { hasSupabaseConfig } from "../lib/supabase";
 import type {
   AdminDraftMenuItem,
   DiningTable,
@@ -7,66 +9,18 @@ import type {
   Order,
   OrderStatus,
 } from "../types";
-
-const defaultCategories: MenuCategory[] = [
-  { id: "cat-drinks", name: { th: "เครื่องดื่ม", en: "Drinks" }, sortOrder: 1, isActive: true },
-  { id: "cat-mains", name: { th: "อาหารจานหลัก", en: "Mains" }, sortOrder: 2, isActive: true },
-  { id: "cat-snacks", name: { th: "ของทานเล่น", en: "Snacks" }, sortOrder: 3, isActive: true },
-  { id: "cat-roti", name: { th: "โรตี", en: "Roti" }, sortOrder: 4, isActive: true },
-  { id: "cat-bread", name: { th: "ขนมปัง", en: "Toast" }, sortOrder: 5, isActive: true },
-  { id: "cat-yum", name: { th: "ยำ", en: "Spicy Salads" }, sortOrder: 6, isActive: true },
-];
-
-const defaultItems: MenuItem[] = [
-  {
-    id: "item-thai-tea",
-    categoryId: "cat-drinks",
-    name: { th: "ชาไทยเย็น", en: "Thai Iced Tea" },
-    description: { th: "ชาไทยเข้มข้น หวานมัน", en: "Strong Thai tea with creamy milk" },
-    price: 55,
-    imageUrl: "https://images.unsplash.com/photo-1556679343-c7306c1976bc?auto=format&fit=crop&w=900&q=80",
-    thumbnailUrl: "https://images.unsplash.com/photo-1556679343-c7306c1976bc?auto=format&fit=crop&w=320&q=70",
-    isAvailable: true,
-    isRecommended: true,
-  },
-  {
-    id: "item-krapao",
-    categoryId: "cat-mains",
-    name: { th: "กะเพราไก่ไข่ดาว", en: "Chicken Basil Rice" },
-    description: { th: "ผัดกะเพราหอม ๆ เสิร์ฟพร้อมไข่ดาว", en: "Fragrant basil stir-fry with crispy fried egg" },
-    price: 89,
-    imageUrl: "https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?auto=format&fit=crop&w=900&q=80",
-    thumbnailUrl: "https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?auto=format&fit=crop&w=320&q=70",
-    isAvailable: true,
-    isRecommended: true,
-  },
-  {
-    id: "item-roti",
-    categoryId: "cat-roti",
-    name: { th: "โรตีกล้วยช็อกโกแลต", en: "Banana Chocolate Roti" },
-    description: { th: "โรตีกรอบนอกนุ่มใน ราดช็อกโกแลต", en: "Crispy roti with banana and chocolate drizzle" },
-    price: 69,
-    imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=900&q=80",
-    thumbnailUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=320&q=70",
-    isAvailable: true,
-  },
-  {
-    id: "item-yum",
-    categoryId: "cat-yum",
-    name: { th: "ยำวุ้นเส้นทะเล", en: "Seafood Glass Noodle Salad" },
-    description: { th: "เปรี้ยว เผ็ด สดชื่น", en: "Bright, spicy, and refreshing" },
-    price: 129,
-    imageUrl: "https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=900&q=80",
-    thumbnailUrl: "https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=320&q=70",
-    isAvailable: true,
-  },
-];
-
-const defaultTables: DiningTable[] = [
-  { id: "table-1", slug: "a1", number: "1", isActive: true },
-  { id: "table-2", slug: "a2", number: "2", isActive: true },
-  { id: "table-3", slug: "vip", number: "VIP", isActive: true },
-];
+import type { OrderStatus as BackendOrderStatus } from "../types/database";
+import type {
+  DiningTable as BackendDiningTable,
+  MenuCategory as BackendMenuCategory,
+  MenuItem as BackendMenuItem,
+  OrderWithItems,
+} from "../types/eatease";
+import { upsertDiningTable, upsertMenuCategory, upsertMenuItem } from "./adminService";
+import { getMenu as getBackendMenu, getMenuItems } from "./menuService";
+import { createOrder, getKitchenOrders, updateOrderStatus as updateBackendOrderStatus } from "./orderService";
+import { subscribeToKitchenOrders } from "./realtimeService";
+import { getTableBySlug as getBackendTableBySlug, getTables as getBackendTables } from "./tableService";
 
 type Store = {
   categories: MenuCategory[];
@@ -81,7 +35,15 @@ const storageKey = "eatease-demo-store";
 const listeners = new Set<Listener>();
 const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("eatease-demo") : null;
 
+const defaultCategories = mockCategories.map(toUiCategory);
+const defaultItems = mockMenuItems.map(toUiMenuItem);
+const defaultTables = mockTables.map(toUiTable);
+
 function initialStore(): Store {
+  if (typeof localStorage === "undefined") {
+    return { categories: defaultCategories, items: defaultItems, tables: defaultTables, orders: [] };
+  }
+
   const raw = localStorage.getItem(storageKey);
   if (raw) return JSON.parse(raw) as Store;
   return { categories: defaultCategories, items: defaultItems, tables: defaultTables, orders: [] };
@@ -92,6 +54,8 @@ function readStore() {
 }
 
 function writeStore(store: Store) {
+  if (typeof localStorage === "undefined") return;
+
   localStorage.setItem(storageKey, JSON.stringify(store));
   listeners.forEach((listener) => listener());
   channel?.postMessage("changed");
@@ -99,8 +63,89 @@ function writeStore(store: Store) {
 
 channel?.addEventListener("message", () => listeners.forEach((listener) => listener()));
 
+function createId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function slugify(value: string) {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9ก-๙]+/gi, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return slug || createId();
+}
+
+function toUiTable(table: BackendDiningTable): DiningTable {
+  return {
+    id: table.id,
+    slug: table.slug,
+    number: table.table_number,
+    label: table.display_name ? { th: table.display_name, en: table.display_name } : undefined,
+    isActive: table.is_active,
+  };
+}
+
+function toUiCategory(category: BackendMenuCategory): MenuCategory {
+  return {
+    id: category.id,
+    name: { th: category.name_th, en: category.name_en },
+    sortOrder: category.sort_order,
+    isActive: category.is_active,
+  };
+}
+
+function toUiMenuItem(item: BackendMenuItem): MenuItem {
+  return {
+    id: item.id,
+    categoryId: item.category_id,
+    name: { th: item.name_th, en: item.name_en },
+    description: { th: item.description_th ?? "", en: item.description_en ?? "" },
+    price: Number(item.price),
+    imageUrl: item.image_url ?? undefined,
+    thumbnailUrl: item.thumbnail_url ?? undefined,
+    isAvailable: item.is_available,
+  };
+}
+
+function toUiStatus(status: BackendOrderStatus): OrderStatus {
+  return status;
+}
+
+function toUiOrder(order: OrderWithItems): Order {
+  return {
+    id: order.id,
+    tableId: order.table_id,
+    tableNumber: order.table_number,
+    status: toUiStatus(order.status),
+    items: order.items.map((item) => ({
+      id: item.id,
+      menuItemId: item.menu_item_id ?? "",
+      name: { th: item.item_name_th, en: item.item_name_en },
+      quantity: item.quantity,
+      unitPrice: Number(item.unit_price),
+      note: item.notes ?? undefined,
+    })),
+    total: Number(order.total),
+    createdAt: order.created_at,
+    updatedAt: order.updated_at,
+    customerNote: order.notes ?? undefined,
+  };
+}
+
 export const eatEaseApi = {
   async getMenu(): Promise<MenuSnapshot> {
+    if (hasSupabaseConfig) {
+      const [categories, items] = await Promise.all([getBackendMenu(), getMenuItems()]);
+      return {
+        categories: categories.map(toUiCategory),
+        items: items.map(toUiMenuItem),
+      };
+    }
+
     const store = readStore();
     return {
       categories: store.categories.filter((category) => category.isActive).sort((a, b) => a.sortOrder - b.sortOrder),
@@ -109,10 +154,19 @@ export const eatEaseApi = {
   },
 
   async getTables(): Promise<DiningTable[]> {
+    if (hasSupabaseConfig) {
+      return (await getBackendTables()).map(toUiTable);
+    }
+
     return readStore().tables;
   },
 
   async getTableBySlug(slug: string): Promise<DiningTable | undefined> {
+    if (hasSupabaseConfig) {
+      const table = await getBackendTableBySlug(slug);
+      return table ? toUiTable(table) : undefined;
+    }
+
     return readStore().tables.find((table) => table.slug === slug && table.isActive);
   },
 
@@ -121,6 +175,23 @@ export const eatEaseApi = {
     customerNote?: string;
     items: Array<{ menuItemId: string; quantity: number; note?: string }>;
   }): Promise<Order> {
+    if (hasSupabaseConfig) {
+      const table = (await getBackendTables()).find((entry) => entry.id === input.tableId);
+      if (!table) throw new Error("Unknown table");
+
+      const order = await createOrder({
+        tableSlug: table.slug,
+        notes: input.customerNote,
+        items: input.items.map((item) => ({
+          menuItemId: item.menuItemId,
+          quantity: item.quantity,
+          notes: item.note,
+        })),
+      });
+
+      return toUiOrder(order);
+    }
+
     const store = readStore();
     const table = store.tables.find((entry) => entry.id === input.tableId);
     if (!table) throw new Error("Unknown table");
@@ -129,7 +200,7 @@ export const eatEaseApi = {
       const item = store.items.find((entry) => entry.id === line.menuItemId);
       if (!item) throw new Error("Unknown menu item");
       return {
-        id: crypto.randomUUID(),
+        id: createId(),
         menuItemId: item.id,
         name: item.name,
         quantity: line.quantity,
@@ -140,7 +211,7 @@ export const eatEaseApi = {
 
     const now = new Date().toISOString();
     const order: Order = {
-      id: crypto.randomUUID(),
+      id: createId(),
       tableId: table.id,
       tableNumber: table.number,
       status: "new",
@@ -155,11 +226,25 @@ export const eatEaseApi = {
   },
 
   async getOrders(tableId?: string): Promise<Order[]> {
+    if (hasSupabaseConfig) {
+      const orders = await getKitchenOrders(["new", "accepted", "preparing", "ready", "served", "cancelled"]);
+      return orders.filter((order) => !tableId || order.table_id === tableId).map(toUiOrder);
+    }
+
     const orders = readStore().orders;
     return tableId ? orders.filter((order) => order.tableId === tableId) : orders;
   },
 
   async updateOrderStatus(orderId: string, status: OrderStatus): Promise<Order> {
+    if (hasSupabaseConfig) {
+      await updateBackendOrderStatus({ orderId, status });
+      const order = (await getKitchenOrders(["new", "accepted", "preparing", "ready", "served", "cancelled"]))
+        .find((candidate) => candidate.id === orderId);
+
+      if (!order) throw new Error("Unknown order");
+      return toUiOrder(order);
+    }
+
     const store = readStore();
     let updated: Order | undefined;
     const orders = store.orders.map((order) => {
@@ -173,17 +258,48 @@ export const eatEaseApi = {
   },
 
   async saveCategory(category: MenuCategory): Promise<MenuCategory> {
+    if (hasSupabaseConfig) {
+      const saved = await upsertMenuCategory({
+        id: category.id || undefined,
+        slug: slugify(category.name.en || category.name.th),
+        name_th: category.name.th,
+        name_en: category.name.en,
+        sort_order: category.sortOrder,
+        is_active: category.isActive,
+      });
+
+      return toUiCategory(saved);
+    }
+
     const store = readStore();
     const categories = store.categories.some((entry) => entry.id === category.id)
       ? store.categories.map((entry) => (entry.id === category.id ? category : entry))
-      : [...store.categories, { ...category, id: crypto.randomUUID() }];
+      : [...store.categories, { ...category, id: createId() }];
     writeStore({ ...store, categories });
     return category;
   },
 
   async saveMenuItem(item: AdminDraftMenuItem): Promise<MenuItem> {
+    if (hasSupabaseConfig) {
+      const saved = await upsertMenuItem({
+        id: item.id,
+        category_id: item.categoryId,
+        slug: slugify(item.name.en || item.name.th),
+        name_th: item.name.th,
+        name_en: item.name.en,
+        description_th: item.description.th,
+        description_en: item.description.en,
+        price: item.price,
+        image_url: item.imageUrl || null,
+        thumbnail_url: item.thumbnailUrl || item.imageUrl || null,
+        is_available: item.isAvailable,
+      });
+
+      return toUiMenuItem(saved);
+    }
+
     const store = readStore();
-    const nextItem: MenuItem = { ...item, id: item.id ?? crypto.randomUUID() };
+    const nextItem: MenuItem = { ...item, id: item.id ?? createId() };
     const items = store.items.some((entry) => entry.id === nextItem.id)
       ? store.items.map((entry) => (entry.id === nextItem.id ? nextItem : entry))
       : [nextItem, ...store.items];
@@ -192,15 +308,31 @@ export const eatEaseApi = {
   },
 
   async saveTable(table: DiningTable): Promise<DiningTable> {
+    if (hasSupabaseConfig) {
+      const saved = await upsertDiningTable({
+        id: table.id || undefined,
+        slug: table.slug,
+        table_number: table.number,
+        display_name: table.label?.en ?? null,
+        is_active: table.isActive,
+      });
+
+      return toUiTable(saved);
+    }
+
     const store = readStore();
     const tables = store.tables.some((entry) => entry.id === table.id)
       ? store.tables.map((entry) => (entry.id === table.id ? table : entry))
-      : [...store.tables, { ...table, id: crypto.randomUUID() }];
+      : [...store.tables, { ...table, id: createId() }];
     writeStore({ ...store, tables });
     return table;
   },
 
   subscribe(listener: Listener) {
+    if (hasSupabaseConfig) {
+      return subscribeToKitchenOrders(() => listener());
+    }
+
     listeners.add(listener);
     return () => listeners.delete(listener);
   },

@@ -1,5 +1,6 @@
 import { ImagePlus, Plus, Save, Utensils } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
+import { uploadMenuImage } from "../services/adminService";
 import { eatEaseApi } from "../services/eatEaseApi";
 import { t } from "../i18n/messages";
 import type { DiningTable, Locale, MenuCategory, MenuItem } from "../types";
@@ -34,6 +35,7 @@ export function AdminPage({ locale }: Props) {
   const [categoryDraft, setCategoryDraft] = useState<MenuCategory>(emptyCategory);
   const [itemDraft, setItemDraft] = useState<Omit<MenuItem, "id">>(emptyItem());
   const [tableDraft, setTableDraft] = useState<DiningTable>({ id: "", slug: "", number: "", isActive: true });
+  const [uploadMessage, setUploadMessage] = useState("");
 
   async function load() {
     const [menu, tableRows] = await Promise.all([eatEaseApi.getMenu(), eatEaseApi.getTables()]);
@@ -67,6 +69,19 @@ export function AdminPage({ locale }: Props) {
     await eatEaseApi.saveTable({ ...tableDraft, id: tableDraft.id || crypto.randomUUID() });
     setTableDraft({ id: "", slug: "", number: "", isActive: true });
     load();
+  }
+
+  async function uploadImage(file: File | null) {
+    if (!file) return;
+    setUploadMessage("Uploading...");
+    try {
+      const path = `${Date.now()}-${file.name.toLowerCase().replace(/[^a-z0-9.]+/g, "-")}`;
+      const imageUrl = await uploadMenuImage(file, path);
+      setItemDraft((current) => ({ ...current, imageUrl, thumbnailUrl: imageUrl }));
+      setUploadMessage("Upload complete");
+    } catch (error) {
+      setUploadMessage(error instanceof Error ? error.message : "Upload failed");
+    }
   }
 
   return (
@@ -137,6 +152,11 @@ export function AdminPage({ locale }: Props) {
             </span>
             <input value={itemDraft.imageUrl} onChange={(event) => setItemDraft({ ...itemDraft, imageUrl: event.target.value, thumbnailUrl: event.target.value })} />
           </label>
+          <label className="field">
+            <span>Upload image</span>
+            <input accept="image/*" onChange={(event) => uploadImage(event.target.files?.[0] ?? null)} type="file" />
+          </label>
+          {uploadMessage && <p className="form-message">{uploadMessage}</p>}
           <div className="switch-row">
             <label><input checked={itemDraft.isAvailable} onChange={(event) => setItemDraft({ ...itemDraft, isAvailable: event.target.checked })} type="checkbox" /> {t(locale, "available")}</label>
             <label><input checked={itemDraft.isRecommended} onChange={(event) => setItemDraft({ ...itemDraft, isRecommended: event.target.checked })} type="checkbox" /> {t(locale, "recommended")}</label>

@@ -9,6 +9,7 @@ export type OrderStatus =
   | "new"
   | "accepted"
   | "preparing"
+  | "ready"
   | "served"
   | "cancelled";
 

@@ -4,12 +4,13 @@ import { statusLabels } from "../i18n/messages";
 import type { Locale, Order, OrderStatus } from "../types";
 import { localize, money, shortTime } from "../utils/format";
 
-const nextStatuses: OrderStatus[] = ["accepted", "preparing", "served", "cancelled"];
+const nextStatuses: OrderStatus[] = ["accepted", "preparing", "ready", "served", "cancelled"];
 
 const icons: Record<OrderStatus, typeof Clock> = {
   new: Clock,
   accepted: CheckCircle2,
   preparing: CookingPot,
+  ready: CheckCircle2,
   served: CheckCircle2,
   cancelled: XCircle,
 };

@@ -297,5 +297,27 @@ on storage.objects for delete
 to authenticated
 using (bucket_id = 'menu-images');
 
-alter publication supabase_realtime add table public.orders;
-alter publication supabase_realtime add table public.order_items;
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    if not exists (
+      select 1
+      from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = 'orders'
+    ) then
+      alter publication supabase_realtime add table public.orders;
+    end if;
+
+    if not exists (
+      select 1
+      from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = 'order_items'
+    ) then
+      alter publication supabase_realtime add table public.order_items;
+    end if;
+  end if;
+end $$;
